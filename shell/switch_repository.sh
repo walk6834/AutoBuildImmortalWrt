@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # 将Imagebuilder默认repositories 切换到镜像源 避免下载失败
 #OFFICIAL="https://downloads.immortalwrt.org"
 #MIRROR="https://mirrors.cernet.edu.cn/immortalwrt"
