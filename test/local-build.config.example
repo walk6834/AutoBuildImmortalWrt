@@ -1,0 +1,47 @@
+# ImmortalWrt 本地构建配置
+# 复制此文件为 local-build.config 并修改配置
+
+# 项目根目录 (必填)
+# 指向 AutoBuildImmortalWrt 仓库的根目录
+# 例如: /home/user/AutoBuildImmortalWrt 或 /root/AutoBuildImmortalWrt
+PROJECT_ROOT=
+
+# 路由器管理地址 (仅对多网口路由器有效)
+# 格式: 192.168.x.1 或 10.x.x.1
+CUSTOM_ROUTER_IP=192.168.100.1
+
+# 固件大小 (单位: MB)
+# 推荐值: 512, 768, 1024, 1536, 2048
+PROFILE=1024
+
+# LuCI 版本
+# 可选值: 24.10.0, 24.10.1, 24.10.2, 24.10.3, 24.10.4, 24.10.5
+LUCI_VERSION=24.10.5
+
+# 是否包含 Docker 插件
+# 可选值: yes, no
+INCLUDE_DOCKER=yes
+
+# 是否启用 PPPoE 拨号
+# 可选值: yes, no
+ENABLE_PPPOE=no
+
+# PPPoE 账号 (仅当 ENABLE_PPPOE=yes 时有效)
+# PPPOE_ACCOUNT=your_account
+
+# PPPoE 密码 (仅当 ENABLE_PPPOE=yes 时有效)
+# PPPOE_PASSWORD=your_password
+
+# 是否启用 Store 商店
+# 可选值: true, false
+ENABLE_STORE=true
+
+# Docker 镜像加速器 (可选)
+# DOCKER_MIRROR=
+
+# 代理设置 (可选，用于访问 GitHub/immortalwrt.org)
+# HTTP_PROXY=socks5://127.0.0.1:1080
+# HTTPS_PROXY=socks5://127.0.0.1:1080
+
+# 构建完成后保留临时文件 (可选)
+# DEBUG_MODE=false
