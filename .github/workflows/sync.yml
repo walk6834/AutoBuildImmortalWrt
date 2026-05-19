@@ -1,0 +1,126 @@
+name: Upstream Sync
+
+env:
+  UPSTREAM_SYNC_REPO: wukongdaily/ImmortalWrt-ImageBuilder
+  UPSTREAM_SYNC_BRANCH: master
+  TARGET_SYNC_BRANCH: master
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # 每天执行一次
+  workflow_dispatch:
+
+jobs:
+  sync_latest_from_upstream:
+    name: Sync latest commits from upstream repo
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+
+    steps:
+      - name: 检出目标仓库
+        id: checkout_target_repo
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.TARGET_SYNC_BRANCH }}
+          fetch-depth: 0
+
+      - name: 配置 Git 用户
+        id: config_git_user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 添加上游仓库远程地址
+        id: add_upstream_remote
+        run: |
+          git remote add upstream "https://github.com/${{ env.UPSTREAM_SYNC_REPO }}.git"
+          git fetch upstream --tags --force
+
+      - name: 检查是否有需要同步的更改
+        id: check_changes_upstream
+        run: |
+          # 使用 git log 检查 origin/sync 是否有 upstream/master 的新提交
+          # 这种方式更准确，因为它反映的是"是否需要拉取新提交"，而不是"文件内容是否一致"
+          if [ -n "$(git log origin/${{ env.TARGET_SYNC_BRANCH }}..upstream/${{ env.UPSTREAM_SYNC_BRANCH }} --oneline)" ]; then
+            echo "need_update=true" >> $GITHUB_ENV
+            echo "检测到 ${{ env.UPSTREAM_SYNC_BRANCH }} 有新提交，需要同步到 ${{ env.TARGET_SYNC_BRANCH }}"
+            git log origin/${{ env.TARGET_SYNC_BRANCH }}..upstream/${{ env.UPSTREAM_SYNC_BRANCH }} --oneline | head -5
+          else
+            echo "need_update=false" >> $GITHUB_ENV
+            echo "${{ env.TARGET_SYNC_BRANCH }} 已是最新，无需同步"
+          fi
+
+      - name: 同步上游更改并推送（跳过 workflow 文件）
+        id: sync_upstream_changes
+        if: env.need_update == 'true'
+        run: |
+          # 保存当前的 workflow 文件
+          mkdir -p /tmp/save-workflows
+          cp -r .github/workflows/* /tmp/save-workflows/ 2>/dev/null || true
+
+          # 重置到上游仓库状态
+          git checkout ${{ env.TARGET_SYNC_BRANCH }}
+          git reset --hard upstream/${{ env.UPSTREAM_SYNC_BRANCH }}
+          echo "=== 重置完成 ==="
+
+          # 恢复 fork 专用的 workflow 文件（避免 GITHUB_TOKEN 限制导致无法推送 workflow 文件更改）
+          cp -r /tmp/save-workflows/* .github/workflows/ 2>/dev/null || true
+
+          # 删除 workflow 目录避免被推送（稍后会单独处理）
+          rm -rf .github/workflows
+
+          # 暂存除 workflow 外的所有更改
+          git add -A
+
+          # 提交同步的代码更改
+          git commit -m "sync: sync code from upstream"
+          echo "=== 已提交非 workflow 文件的更改 ==="
+
+          # 推送（workflow 目录已被删除，不会被推送）
+          git push --force origin ${{ env.TARGET_SYNC_BRANCH }}
+          echo "=== 推送完成 ==="
+
+          # 恢复 workflow 文件到工作目录（仅本地保留）
+          cp -r /tmp/save-workflows/* .github/workflows/ 2>/dev/null || true
+          echo "=== workflow 文件已恢复到本地 ==="
+
+      - name: 验证同步完成
+        id: verify_sync_complete
+        if: success() && env.need_update == 'true'
+        run: |
+          UPSTREAM_COMMIT=$(git rev-parse upstream/${{ env.UPSTREAM_SYNC_BRANCH }})
+          echo "当前 HEAD: $(git rev-parse HEAD)"
+          echo "上游提交: $UPSTREAM_COMMIT"
+          echo "=== 验证同步内容（排除 workflow 文件）==="
+          # 检查所有非 workflow 文件是否与上游仓库一致
+          if git diff --quiet upstream/${{ env.UPSTREAM_SYNC_BRANCH }} HEAD -- ':!.github/workflows'; then
+            echo "✓ 非 workflow 文件已与上游同步"
+          else
+            echo "✗ 非 workflow 文件与上游存在差异"
+            git diff --stat upstream/${{ env.UPSTREAM_SYNC_BRANCH }} HEAD -- ':!.github/workflows'
+            exit 1
+          fi
+
+      - name: 同步检查失败处理
+        id: handle_sync_failure
+        if: failure()
+        run: |
+          echo "[错误] 同步失败，请检查以下可能的原因："
+          echo "1. 上游仓库不存在或网络不可达"
+          echo "2. 分支保护规则阻止了强制推送"
+          echo "3. workflow 文件以外的代码文件存在冲突"
+          echo "请手动检查上游仓库状态，或查看 Action 日志获取更多细节。"
+          exit 1
+
+      - name: 删除旧的 workflow 运行记录
+        id: delete_old_workflow_runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 7
+          keep_minimum_runs: 1
